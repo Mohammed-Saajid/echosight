@@ -1955,6 +1955,7 @@ fun MyApp() {
                     context.performTextToSpeech("If you need to get weather report.say. get weather report.")
                     context.performTextToSpeech("If you need to remember some task to do. say. to do list")
                     context.performTextToSpeech("If you need to read all unread sms messages. say. read all unread messages.")
+                    context.performTextToSpeech("If you need to list out all features, just say. what can you do.")
                 }
                 else if (context.recognizedText?.lowercase() in listOf("change language","language change","language")) {
                     context.performTextToSpeech("What is the name of the language you want to change?")
