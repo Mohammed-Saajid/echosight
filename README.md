@@ -1,23 +1,21 @@
 # Project Echo Sight
 
 ## Introduction:
-
- EchoSight is an innovative Android application designed to assist visually challenged individuals by providing audio descriptions of their surroundings upon request,Provide assistance with their surroundings,and various other features. EchoSight aims to enhance the independence and quality of life for visually impaired people. It is integrated with the Googles's Gemini model. Gemini acts as the hero of our project !.
- They do say, "A picture speaks more than a thousand words", But not being able to see a picture doesn't mean that we can't hear a thousand words isn't it?.
-
+ 
+ EchoSight is a cutting-edge Android application meticulously crafted to assist visually challenged individuals by providing real-time audio descriptions of their surroundings and other valuable features. This application is integrated with Google's Gemini model, which acts as the cornerstone of our project. As the saying goes, "A picture is worth a thousand words," but EchoSight proves that hearing those thousand words can be just as powerful.
+ 
 ## Aim:
 
- We aim to provide more ease, comfort and independence to people who are visually impaired. We have unified various features under one application. Rather than providing Normal user interface (UI), Echosight provides very minimal User Interface but focuses on User Audio Interface (UAI). In Future, we aim to make this app accessible from every android phone, just like a normal assistant app basically for free of cost.  
- 
+ Our aim is to enhance the ease, comfort, and independence of visually impaired individuals. EchoSight unifies a variety of features within a single application, emphasizing a minimal User Interface (UI) and a robust User Audio Interface (UAI). Our future goal is to make this app accessible on every Android phone, much like a personal assistant, and to offer it free of charge.
  
 
 ## Key Features:
 
- Voice based interaction: This app is completely interacted through voice, Both input and output.
+ Voice based interaction: This app is completely interacted through voice commands for Both input and output.
 
  Scene Description: Integrated with the powerful Gemini Model, Echosight provides comprehensive audio descriptions of your surroundings.
  
- Multi-lingual Support: Currently supports interaction in more than 45 languages, empowering a wider range of users. Aims to provide more number of lanuages in the future.
+ Multi-lingual Support: Currently supports interaction in more than 45 languages, empowering a wider range of users. Aims to provide more number of languages in the future.
  
  Facial Recognition: Tell Echosight to remember a face, and upon request, it will notify you if it encounters that person again later.
  
@@ -39,7 +37,7 @@
  
  Readability: With Gemini integrated Echosight, All the users can read books, notice signs, and literally anything !.
 
-### We have also invented a pair of smart glasses which can be used with the echosight app, It has a built-in camera, which can be used to capture images. By wearing the glasses the user do not have to lift their phone, each time they have to use a feature which uses the camera, but point their head towards what they want to capture!. This will provide them more ease and comfort.
+### We have developed smart glasses that pair with the EchoSight app. These glasses feature a built-in camera, allowing users to capture images without lifting their phones. By simply pointing their head towards an object, users can effortlessly utilize camera-dependent features, enhancing their comfort and convenience.
 
 
 ## List of all features:
@@ -72,9 +70,9 @@
  
 
 ## Conclusion:
- The Echosight development team is dedicated to creating a future where visual impairment doesn't limit your potential. We also strongly convey  that this project is not made for straight production, But as a prototype in which all the features are implemented. Still We have made the project as much real as possible!. We humbly appreciate feedbacks or any concerns regarding the project.
- 
- Join us in the process of making a more audible FUTURE!. 
+ The EchoSight development team is dedicated to creating a future where visual impairment does not limit potential. While this project serves as a prototype with implemented features, we strive to make it as realistic and practical as possible. We welcome any feedback or concerns regarding the project.
+
+ Join us in making a more audible future! 
  
 
 ## Team
