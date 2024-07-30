@@ -1,7 +1,5 @@
 package com.project.echosight
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.face.FaceDetection
-import com.google.mlkit.vision.face.FaceDetectorOptions
+
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
@@ -23,26 +21,29 @@ import android.os.Bundle
 import android.os.Environment
 import android.provider.ContactsContract
 import android.provider.Telephony
+import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.speech.tts.Voice
 import android.telephony.SmsManager
 import android.telephony.SmsMessage
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -52,32 +53,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
-import com.google.ai.client.generativeai.GenerativeModel
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withContext
-
-import java.io.File
-import java.io.IOException
-import java.util.Locale
-import okhttp3.MultipartBody
-import okhttp3.ResponseBody
-import retrofit2.Call
-import retrofit2.http.Multipart
-import retrofit2.http.POST
-
-import retrofit2.http.Part
-import kotlin.coroutines.resume
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.content
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
@@ -86,27 +72,47 @@ import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.Translation
 import com.google.mlkit.nl.translate.Translator
 import com.google.mlkit.nl.translate.TranslatorOptions
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.face.FaceDetection
+import com.google.mlkit.vision.face.FaceDetectorOptions
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.ResponseBody
 import okhttp3.logging.HttpLoggingInterceptor
+import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
-import java.io.FileOutputStream
-import okhttp3.RequestBody.Companion.asRequestBody
 import retrofit2.converter.scalars.ScalarsConverterFactory
 import retrofit2.http.GET
+import retrofit2.http.Multipart
+import retrofit2.http.POST
+import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
 import java.io.BufferedReader
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
 import java.io.InputStreamReader
 import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Locale
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlin.random.Random
+
 data class YouTubeResponse(
     val items: List<YouTubeItem>
 )
@@ -141,14 +147,14 @@ interface YouTubeApi {
 object RetrofitInstance2 {
     val api: YouTubeApi by lazy {
         Retrofit.Builder()
-            .baseUrl("https://www.googleapis.com/")
+            .baseUrl("https://www.googleapis.com/") // youtube data api
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(YouTubeApi::class.java)
     }
 }
 object GoogleDirectionsRetrofit {
-    private const val BASE_URL = "https://maps.googleapis.com/maps/api/"
+    private const val BASE_URL = "https://maps.googleapis.com/maps/api/" // gmaps api
     val retrofit: Retrofit by lazy {
         Retrofit.Builder()
             .baseUrl(BASE_URL)
@@ -206,13 +212,23 @@ interface ImageService {
     suspend fun checkServerStatus(): String
 }
 object RetrofitInstance {
-    private const val BASE_URL = "http://192.168.1.6"
+    private const val BASE_URL = ""
     private val gson = GsonBuilder()
         .setLenient()
         .create()
+
+    private val client: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)  
+            .readTimeout(30, TimeUnit.SECONDS)     
+            .writeTimeout(30, TimeUnit.SECONDS)    
+            .build()
+    }
+
     private val retrofit: Retrofit by lazy {
         Retrofit.Builder()
             .baseUrl(BASE_URL)
+            .client(client)
             .addConverterFactory(ScalarsConverterFactory.create())
             .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
@@ -237,7 +253,7 @@ interface ApiService {
 data class UploadResponse(val task_id: String)
 data class ResultResponse(val status: String, val result: String?)
 object RetrofitClient {
-    private const val BASE_URL = "https://ba98-122-164-82-208.ngrok-free.app"
+    private const val BASE_URL = "" // server url for face recognition
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY
     }
@@ -274,6 +290,9 @@ object RetrofitClient {
         retrofit.create(ApiService::class.java)
     }
 }
+
+
+
 class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
     enum class ListeningMode {
         COMMAND,
@@ -285,12 +304,11 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
     }
     private lateinit var textToSpeech: TextToSpeech
     private val SMS_PERMISSION_CODE = 101
-    private lateinit var speechRecognizerLauncher: ActivityResultLauncher<Intent>
     var recognizedText: String? = ""
-    var geminiapikey = com.project.echosight.BuildConfig.geminiapikey
-    var youtubedfapikey = com.project.echosight.BuildConfig.youtubedfapikey
-    var openweatherapi = com.project.echosight.BuildConfig.openweatherapikey
-    var gmapsapikey = com.project.echosight.BuildConfig.gmapsapikey
+    var geminiapikey = BuildConfig.geminiapikey
+    var youtubedfapikey = BuildConfig.youtubedfapikey
+    var openweatherapi = BuildConfig.openweatherapikey
+    var gmapsapikey = BuildConfig.gmapsapikey
     var aiResponseText = ""
     lateinit var Translatorr : Translator
     lateinit var Translatorrr : Translator
@@ -303,7 +321,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
     var LanguageName = "english"
     var LanguageCode1 = ""
     var LanguageCode2 = ""
-    @RequiresApi(Build.VERSION_CODES.P)
+
+    
     private val requiredPermissions = arrayOf(
         Manifest.permission.BATTERY_STATS,
         Manifest.permission.PACKAGE_USAGE_STATS,
@@ -437,34 +456,35 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
         "icelandic", "polish", "catalan", "slovak", "italian", "lithuanian", "malay",
         "bulgarian", "welsh", "indonesian", "telugu", "romanian"
     )
+
+    val features = listOf(
+        "If you need to capture a face and ask me to remember just tell me. Remember this face.",
+        "If you need to check whether a remembered face is present in front of you. just ask me. Check for faces.",
+        "If you want to ask a creative question with related to a scene ask me. capture image, After that I will ask you the question you want to ask me.",
+        "If you need to ask a creative question just tell.answer my question.",
+        "if you need to know how much money is in your hand, just ask me, How much money.",
+        "If you need to make an emergency call. Say. emergency call.",
+        "If you need to set an alarm. say. set an alarm.",
+        "If you need to play anything in youtube. Say. Youtube.",
+        "If you need to change language. say. change language.",
+        "If you need to make a call. say. make a call.",
+        "If you need to send an sms.say.send a message.",
+        "If you need to Get the route for someplace. Say. navigation",
+        "If you need to save a new contact. say. add a new contact.",
+        "If you need to get weather report.say. get weather report.",
+        "If you need to remember some task to do. say. to do list",
+        "If you need to read all unread sms messages. say. read all unread messages.",
+        "if you need to list out all the features. ask me. what can you do")
+
     @RequiresApi(Build.VERSION_CODES.P)
-    @SuppressLint("MissingPermission")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestPermissionsIfNecessary()
         textToSpeech = TextToSpeech(this, this)
-        speechRecognizerLauncher =
-            registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-                if (result.resultCode == RESULT_OK && result.data != null) {
-                    val matches =
-                        result.data!!.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-                    if (!matches.isNullOrEmpty()) {
-                        if (LanguageVariable=="11") {
-                            recognizedText = matches[0]
-                        }
-                        else {
-                            var temp = matches[0]
-                            otherLangToEng(temp) { text2 ->
-                            recognizedText = text2
-                            }
-                        }
-                        println("Recognized speech: ${recognizedText}")
-                    }
-                }
-            }
-        if (!doesFileExist(this,"LanguageName.txt") || !doesFileExist(this,"LanguageVariable.txt")) {
+        if (!doesFileExist(this,"LanguageName.txt") || !doesFileExist(this,"LanguageVariable.txt") || !doesFileExist(this,"Voice.txt")) {
             overwriteFile(this,"LanguageName.txt","english")
             overwriteFile(this,"LanguageVariable.txt","11")
+            overwriteFile(this,"Voice.txt","h")
         }
         LanguageName = readFromFile(this,"LanguageName.txt")
         LanguageVariable = readFromFile(this,"LanguageVariable.txt")
@@ -506,7 +526,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
         }
     }
     @SuppressLint("Range")
-    suspend fun getContactName(phoneNumber: String): String? {
+    fun getContactName(phoneNumber: String): String? {
         val contentResolver = contentResolver
         val uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(phoneNumber))
         val cursor = contentResolver.query(uri, arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME), null, null, null)
@@ -577,6 +597,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
                     }
                 } else {
                     Log.e("WeatherApp", "API request failed: ${response.code()}")
+                    performTextToSpeech("No city name detected in what you said.")
                 }
             } catch (e: Exception) {
                 Log.e("WeatherApp", "Error fetching weather:${e.message}")
@@ -620,6 +641,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
             }
         }
     }
+
+
     suspend fun handleSpeechInput(input: String) {
         Log.d("MainActivity", "Speech input: $input")
         when (listeningMode) {
@@ -630,8 +653,10 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
                             val listText = tasks.mapIndexed { index, task -> "${index + 1}. $task" }.joinToString(separator = ", ")
                             Log.d("MainActivity", "Reading tasks: $listText")
                             performTextToSpeech("These are your tasks: $listText")
+                            return
                         } else {
                             performTextToSpeech("No tasks available.")
+                            return
                         }
                     }
                     input.equals("add task", ignoreCase = true) -> {
@@ -641,15 +666,18 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
                     }
                     input.startsWith("delete task", ignoreCase = true) -> {
                         handleDeleteTaskCommand(input.removePrefix("delete task").trim())
+                        return
                     }
                     input.startsWith("read task", ignoreCase = true) -> {
                         handleReadTaskCommand(input.removePrefix("read task").trim())
+                        return
                     }
                     input.equals("delete all tasks", ignoreCase = true) -> {
                         tasks.clear()
                         sharedPreferencesHelper.clearTasks()
                         Log.d("MainActivity", "All tasks deleted")
                         performTextToSpeech("All tasks have been deleted.")
+                        return
                     }
                 }
             }
@@ -662,18 +690,22 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
                     listeningMode = ListeningMode.COMMAND
                     performTextToSpeech("Your task has been added successfully.")
                     sharedPreferencesHelper.saveTasks(tasks)
+                    return
                 } else {
                     listeningMode = ListeningMode.COMMAND
                     Log.d("MainActivity", "No task specified")
                     Toast.makeText(this, "No task specified", Toast.LENGTH_SHORT).show()
                     performTextToSpeech("No task specified")
+                    return
                 }
             }
+
         }
+        performTextToSpeech("No proper command detected")
     }
     suspend fun saveNewContact(context: Context, displayName: String, phoneNumber: String, email: String? = null) {
-        val permissions = arrayOf(android.Manifest.permission.WRITE_CONTACTS, android.Manifest.permission.READ_CONTACTS)
-        if (permissions.all { ContextCompat.checkSelfPermission(context, it) == android.content.pm.PackageManager.PERMISSION_GRANTED }) {
+        val permissions = arrayOf(Manifest.permission.WRITE_CONTACTS, Manifest.permission.READ_CONTACTS)
+        if (permissions.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }) {
             val ops = ArrayList<ContentProviderOperation>()
             ops.add(
                 ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
@@ -763,7 +795,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
         }
     }
     fun overwriteFile(context: Context, fileName: String, content: String) {
-        context.openFileOutput(fileName, Context.MODE_PRIVATE).use { outputStream ->
+        context.openFileOutput(fileName, MODE_PRIVATE).use { outputStream ->
             outputStream.write(content.toByteArray())
         }
     }
@@ -792,7 +824,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
                 onResult("$exception")
             }
     }
-    suspend fun uploadImages(context: Context, textData: String, imagePaths: List<String>): String {
+    suspend fun uploadImages(textData: String, imagePaths: List<String>): String {
         val retrofitClient = RetrofitClient.instance
         val parts = mutableListOf<MultipartBody.Part>()
         val textPart = MultipartBody.Part.createFormData("textData", textData)
@@ -803,9 +835,11 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
             val imagePart = MultipartBody.Part.createFormData("image_$index", file.name, requestBody)
             parts.add(imagePart)
         }
+
         val call = retrofitClient.uploadImages(parts)
         return suspendCancellableCoroutine { continuation ->
             call.enqueue(object : Callback<ResponseBody> {
+
                 override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
                     if (response.isSuccessful && response.body() != null) {
                         val responseBody = response.body()?.string()
@@ -813,7 +847,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
                     } else {
                         val errorMessage = response.message()
                         Log.d("UploadImages", "onResponse: $errorMessage")
-                        continuation.resumeWithException(Exception("Upload failed: $errorMessage"))
+                        continuation.resume("Upload failed: Server $errorMessage. Kindly Try again later.")
                     }
                 }
                 override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
@@ -830,6 +864,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
         val file = File(path)
         val requestFile = RequestBody.create("image/*".toMediaTypeOrNull(), file)
         val body = MultipartBody.Part.createFormData("image", file.name, requestFile)
+        return suspendCancellableCoroutine { cont->
         RetrofitClient.instance.uploadImage(body).enqueue(object : Callback<UploadResponse> {
             override fun onResponse(call: Call<UploadResponse>, response: Response<UploadResponse>) {
                 if (response.isSuccessful) {
@@ -837,18 +872,22 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
                     taskId.let {
                         Toast.makeText(this@MainActivity, "Upload successful. Task ID: $taskId", Toast.LENGTH_LONG).show()
                         onSuccess(taskId)
+                        cont.resume(taskId)
                     }
                 } else {
                     Toast.makeText(this@MainActivity, "Upload failed", Toast.LENGTH_LONG).show()
+
+                    cont.resume("")
                 }
             }
             override fun onFailure(call: Call<UploadResponse>, t: Throwable) {
                 Toast.makeText(this@MainActivity, "Upload error: ${t.message}", Toast.LENGTH_LONG).show()
                 println("Error ${t.message}")
+                cont.resume("")
             }
         })
-        delay(4000)
-        return taskId
+        }
+
     }
     fun checkStatus(taskId: String,onSuccess: (String) -> Unit): String {
         var res = ""
@@ -910,6 +949,9 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
                 val cc = CoroutineScope(Dispatchers.Main)
                 cc.launch {
                     announceTimeAndBattery(this@MainActivity)
+                    performTextToSpeech(features[Random.nextInt(0,features.size)])
+
+
                 }
             }
             else {
@@ -922,6 +964,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
                 val cc = CoroutineScope(Dispatchers.Main)
                 cc.launch {
                     announceTimeAndBattery(this@MainActivity)
+                    performTextToSpeech(features[Random.nextInt(0,features.size)])
                 }
             }
             else {
@@ -939,13 +982,14 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
         Translatorrr.close()
         unregisterReceiver(smsReceiver)
     }
-    fun captureAndSaveImage(
+    suspend fun captureAndSaveImage(
         context: Context,
         lifecycleOwner: LifecycleOwner,
         onImageCaptured: (String) -> Unit,
         onError: (ImageCaptureException) -> Unit,
         file: File
     ) {
+        return suspendCancellableCoroutine { cont ->
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         cameraProviderFuture.addListener({
             val cameraProvider = cameraProviderFuture.get()
@@ -966,20 +1010,31 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
                         override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
                             onImageCaptured(file.absolutePath)
                             cameraProvider.unbindAll()
+                            cont.resume(Unit)
                         }
+
                         override fun onError(exception: ImageCaptureException) {
                             onError(exception)
 
 
                             cameraProvider.unbindAll()
+                            cont.resume(Unit)
+
                         }
                     }
                 )
+
             } catch (exc: Exception) {
                 println(exc)
+                cont.resume(Unit)
+
             }
-        }, ContextCompat.getMainExecutor(context))
+
+                                         }, ContextCompat.getMainExecutor(context))
+
+        }
     }
+    
     suspend fun createFile(context: Context,fileName: String): File? {
         val mediaDir = context.externalMediaDirs.firstOrNull()?.let {
             val appMediaDir = File(it, context.resources.getString(R.string.app_name)).apply { mkdirs() }
@@ -1034,23 +1089,82 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
         }
     }
 
+
     suspend fun performSpeechRecognition() {
-        withContext(Dispatchers.Main) {
-            suspendCancellableCoroutine<Unit> { cont ->
-                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                    putExtra(
-                        RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                        RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
-                    )
-                    if (LanguageVariable=="11") {
-                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
-                    }
-                    else {
-                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, LanguageCode2)
-                    }
+        suspendCancellableCoroutine { continuation ->
+            val speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(
+                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+                )
+                if (LanguageVariable=="11") {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
                 }
-                speechRecognizerLauncher.launch(intent)
-                cont.resume(Unit)
+                else {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, LanguageCode2)
+                }
+
+            }
+
+            val listener = object : RecognitionListener {
+                override fun onReadyForSpeech(params: Bundle?) {}
+                override fun onBeginningOfSpeech() {}
+                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onBufferReceived(buffer: ByteArray?) {}
+                override fun onEndOfSpeech() {}
+
+                override fun onError(error: Int) {
+                    recognizedText = ""
+                    continuation.resume("Speech recognition error: $error")
+
+                }
+
+
+                override fun onResults(results: Bundle?) {
+
+                    val result = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        ?.firstOrNull()
+                    println(result)
+                    println(results)
+                    if (result != null) {
+                        recognizedText = result
+                        if (LanguageVariable=="11") {
+
+                            Log.e("TAG", "onCreate:kuma ", )
+                            recognizedText = result
+                            continuation.resume(result)
+
+                        }
+                        else {
+
+                            var temp = result
+
+                            otherLangToEng(temp) { text2 ->
+                                recognizedText = text2
+                            }
+                            continuation.resume(result)
+                        }
+
+                    }
+                        else {
+
+                            continuation.resumeWithException(Exception("No speech result"))
+
+                    }
+                    speechRecognizer.destroy()
+                }
+
+                override fun onPartialResults(partialResults: Bundle?) {}
+                override fun onEvent(eventType: Int, params: Bundle?) {}
+            }
+
+            speechRecognizer.setRecognitionListener(listener)
+            speechRecognizer.startListening(intent)
+
+            continuation.invokeOnCancellation {
+                speechRecognizer.stopListening()
+                speechRecognizer.destroy()
             }
         }
     }
@@ -1134,6 +1248,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
                     cont.resume(Unit)
                 } catch (e: Exception) {
                     Log.e("askAQuestion", "Exception: ${e.message}")
+                    aiResponseText = "Error caused : ${e.message}"
                     cont.resume(Unit)
                 }
             }
@@ -1229,24 +1344,36 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
             modelName = "gemini-1.5-flash",
             apiKey = geminiapikey
         )
-        val inputContent = content() {
-            image(imagee)
-            text("Describe the scene for a blind person. Don't include any punctuation marks other than full stops and commas")
+        try {
+            val inputContent = content() {
+                image(imagee)
+                text("Describe the scene for a blind person. Don't include any punctuation marks other than full stops and commas")
+            }
+            val response = generativeModel.generateContent(inputContent)
+            return response.text
         }
-        val response = generativeModel.generateContent(inputContent)
-        return response.text
+        catch (e:Exception) {
+            return "Unfortunately an error occured. This may be due to network issues, or any explicit content in the image."
+        }
     }
     suspend fun captureImage(imagee: Bitmap,prompt: String): String? {
         val generativeModel = GenerativeModel(
             modelName = "gemini-1.5-flash",
             apiKey = geminiapikey
         )
+        try {
         val inputContent = content() {
             image(imagee)
-            text("$prompt. Don't include any punctuation marks other than full stops and commas")
+            text("$prompt.Note that this image is taken from the view of a visually impaired person, so assist them accordingly. Don't include any punctuation marks other than full stops and commas")
         }
         val response = generativeModel.generateContent(inputContent)
         return response.text
+
+        }
+
+        catch (e:Exception) {
+            return "Unfortunately an error occured. This may be due to network issues, or any explicit content in the image."
+        }
     }
     suspend fun announceTimeAndBattery(context: Context) {
         val currentTime = Calendar.getInstance().time
@@ -1265,45 +1392,42 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
         val announcement = "The current time is $formattedTime. The battery level is $percentage percent."
         performTextToSpeech(announcement)
     }
-    suspend fun processSpokenTime(spokenText: String) {
-        Log.d("VoiceAlarm", "Spoken Text: $spokenText")
-        val parts = spokenText.split(" ")
-        if (parts.size == 2) {
-            val timeParts = parts[0].split(":")
-            if (timeParts.size == 2) {
-                try {
-                    val hour = timeParts[0].toInt()
-                    val minute = timeParts[1].toInt()
-                    val isAM = parts[1].lowercase(Locale.ROOT) == "am"
+     suspend fun processSpokenTime(spokenText: String) {
+        Log.d("VoiceAlarm", "SpokenText: $spokenText")
+
+        val pattern =Regex("(\\d{1,2})[:\\s]?(\\d{0,2})?\\s*(am|pm)?", RegexOption.IGNORE_CASE)
+        val matchResult = pattern.find(spokenText)
+
+        if (matchResult != null) {
+            val (hourString, minuteString, amPmPart) = matchResult.destructured
+
+            try {
+                val hour = hourString.toIntOrNull() ?: 0
+                val minute = minuteString.toIntOrNull() ?: 0
+                val isAM = amPmPart.lowercase(java.util.Locale.ROOT).startsWith("a")
+
+                if (hour in 0..23 && minute in 0..59) {
                     alarmTime = Calendar.getInstance().apply {
-                        set(Calendar.HOUR_OF_DAY, if (isAM) hour else hour + 12)
+                        set(Calendar.HOUR_OF_DAY, if (isAM && hour == 12) 0 else if (isAM) hour else hour % 12 + 12)
                         set(Calendar.MINUTE, minute)
                         set(Calendar.SECOND, 0)
                     }
                     alarmTime?.let {
                         setAlarm(it)
-                        textToSpeech.speak(
-                            "Alarm set for ${
-                                SimpleDateFormat(
-                                    "hh:mm a",
-                                    Locale.getDefault()
-                                ).format(it.time)
-                            }",
-                            TextToSpeech.QUEUE_FLUSH,
-                            null,
-                            null
-                        )
+                        val formattedTime = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(it.time)
+                        textToSpeech.speak("Alarm set for $formattedTime", TextToSpeech.QUEUE_FLUSH, null, null)
                     }
-                } catch (e: NumberFormatException) {
-                    performTextToSpeech("Sorry, I didn't understand the time. Please try again.")
+                } else {
+                    performTextToSpeech("Invalid time format. Please try again.")
                 }
-            } else {
-                performTextToSpeech("Please say the time in the format of 'hours:minutes AM/PM.")
+            } catch (e: NumberFormatException) {
+                performTextToSpeech("Sorry, I didn't understand the time. Please try again.")
             }
         } else {
-            performTextToSpeech("Please say the time in the format of 'hours:minutes AM/PM.")
+            performTextToSpeech("Please say the time in the format of 'hours:minutes AM/PM'")
         }
     }
+
     fun convertByteArrayToBitmap(byteArray: ByteArray): Bitmap? {
         return try {
             BitmapFactory.decodeByteArray(byteArray, 0, byteArray.size)
@@ -1318,14 +1442,21 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(intent)
     }
-    fun saveBitmapToExternalStorage(bitmap: Bitmap, fileName: String): String? {
+   suspend fun saveBitmapToExternalStorage(bitmap: Bitmap, fileName: String): String? {
         val externalStorageDirectory = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
-        val file = File(externalStorageDirectory, "$fileName.png")
+        val file = File(externalStorageDirectory, fileName)
+        delay(3000)
         return try {
-            val outputStream = FileOutputStream(file)
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
-            outputStream.flush()
-            outputStream.close()
+            val outputStream = withContext(Dispatchers.IO) {
+                FileOutputStream(fileName)
+            }
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
+            withContext(Dispatchers.IO) {
+                outputStream.flush()
+            }
+            withContext(Dispatchers.IO) {
+                outputStream.close()
+            }
             file.absolutePath
         } catch (e: IOException) {
             e.printStackTrace()
@@ -1338,12 +1469,20 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
             modelName = "gemini-1.5-flash",
             apiKey = geminiapikey
         )
-        val inputContent = content() {
-            image(imagee)
-            text("Tell how much money is this.If possible include currency name. Don't include any punctuation marks other than full stops and commas")
+        try {
+            val inputContent = content() {
+                image(imagee)
+                text("Tell how much money in the photo.If possible include currency name.If no money is detected,say 'no money is detected'. Don't include any punctuation marks other than full stops and commas.")
+            }
+
+            val response = generativeModel.generateContent(inputContent)
+            return response.text
         }
-        val response = generativeModel.generateContent(inputContent)
-        return response.text
+
+        catch (e:Exception) {
+            return "Unfortunately an error occured. This may be due to network issues, or any explicit content in the image."
+        }
+
     }
     @SuppressLint("ScheduleExactAlarm")
     private fun setAlarm(time: Calendar) {
@@ -1355,16 +1494,32 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener{
             intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
+
+        val currentTime = Calendar.getInstance()
+        if (time.before(currentTime)) {
+            // Alarm time is in the past, add one day
+            time.add(Calendar.DAY_OF_YEAR, 1)
+            val formattedTime = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(time.time)
+            textToSpeech.speak("Alarm set for tomorrow at $formattedTime", TextToSpeech.QUEUE_FLUSH, null, null)
+        } else {
+            val formattedTime = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(time.time)
+            textToSpeech.speak("Alarm set for today at $formattedTime", TextToSpeech.QUEUE_FLUSH, null, null)
+        }
+
         alarmManager.setExactAndAllowWhileIdle(
             AlarmManager.RTC_WAKEUP,
             time.timeInMillis,
             pendingIntent
         )
+
         val formattedTime = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(time.time)
         Log.d("VoiceAlarm", "Alarm set for: $formattedTime")
-        Toast.makeText(this, "Alarm sector $formattedTime", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Alarm set for $formattedTime", Toast.LENGTH_SHORT).show()
     }
-    suspend fun readUnreadSms()  {
+
+
+
+suspend fun readUnreadSms()  {
         val smsUri: Uri = Telephony.Sms.Inbox.CONTENT_URI
         val selection = "${Telephony.Sms.Inbox.READ} = 0"
         val cursor: Cursor? = contentResolver.query(
@@ -1429,6 +1584,11 @@ fun MyApp() {
     var glassStatus = false
     val fusedLocationClient = LocationServices.getFusedLocationProviderClient(LocalContext.current)
     Box(modifier = Modifier.fillMaxSize()) {
+        Image(
+            painter = painterResource(id = R.drawable.echologo),
+            contentDescription = "Echo Sight",
+            modifier = Modifier.align(Alignment.Center)
+        )
         Button(
             onClick = { coroutineScope.launch {
                 context.checkServerStatus { s ->
@@ -1441,7 +1601,6 @@ fun MyApp() {
                 println(context.LanguageVariable)
                 context.performTextToSpeech("Say Something")
                 context.performSpeechRecognition()
-                delay(4000)
                 Log.d("main", "MyApp: ${context.recognizedText}")
                 context.recognizedText?.let {
                     Log.d("main", "MyApp: ${context.recognizedText}2")
@@ -1449,7 +1608,6 @@ fun MyApp() {
                 }
                 if (context.recognizedText?.lowercase() in listOf("answer my question","answer question","question answer","question my answer","my question answer")) {
                     context.performSpeechRecognition()
-                    delay(5000)
                     Log.d("Gemini", "MyApp: ${context.recognizedText}")
                     context.recognizedText?.let { context.askAQuestion(it) }
                     delay(2000)
@@ -1458,11 +1616,17 @@ fun MyApp() {
                 else if (context.recognizedText?.lowercase() in listOf("make a call","do a call","call","call someone","call do","do call","make call")) {
                     context.performTextToSpeech("Whom do you want to call?")
                     context.performSpeechRecognition()
-                    delay(5000)
                     try {
+                        print(context.recognizedText)
                         phoneNumber = context.getPhoneNumberByName(context, context.recognizedText!!)
+                        println(phoneNumber)
+
+
                         phoneNumber?.let {
                             context.makePhoneCall(context, it)
+                        }
+                        if (phoneNumber==null) {
+                            context.performTextToSpeech("No contact detected in this name. Kindly check what you said.")
                         }
                     }
                     catch (e : Exception) {
@@ -1472,13 +1636,11 @@ fun MyApp() {
                 else if (context.recognizedText?.lowercase() in listOf("send a message","send message","message","do a message","message someone","write a message","do message","make message","make a message")) {
                     context.performTextToSpeech("Whom do you want to message")
                     context.performSpeechRecognition()
-                    delay(3000)
                     try {
                         phoneNumber = context.getPhoneNumberByName(context,context.recognizedText!!)
                         Log.d("Mainnn", "MyApp: $phoneNumber")
                         context.performTextToSpeech("What message do you want to send")
                         context.performSpeechRecognition()
-                        delay(3000)
                         Log.d("Mainnn", "MyApp: $phoneNumber")
                         Log.d("Mainnn", "MyApp: $phoneNumber")
                         var text1 = ""
@@ -1488,6 +1650,9 @@ fun MyApp() {
                            }
                         }
                         context.performTextToSpeech(text1)
+                        if (phoneNumber==null) {
+                            context.performTextToSpeech("No contact saved in this name.Kindly check what you said.")
+                        }
                     }
                     catch (e : Exception) {
                         context.performTextToSpeech("Sorry Making Phone call Failed due to $e")
@@ -1505,7 +1670,7 @@ fun MyApp() {
                                 var response = img?.let { context.describeTheScene(it) }
                                 delay(3000)
                                 if (response != null) {
-                                    context.performTextToSpeech(response)
+                                    context.performTextToSpeech(response!!)
                                 }
                             }
                         }
@@ -1514,7 +1679,7 @@ fun MyApp() {
                         var a = ""
                         val newfile = context.createFile(context, "capturedimage")
                         Log.d("File", "MyApp: File $newfile")
-                        delay(1000)
+                       // delay(1000)
                         if (newfile != null) {
                             context.captureAndSaveImage(
                                 context, context, onImageCaptured = { filePath ->
@@ -1528,13 +1693,11 @@ fun MyApp() {
                         } else {
                             Log.e("Error","Error")
                         }
-                        delay(2000)
                         val bitmap = BitmapFactory.decodeFile(a)
-                        val response = context.describeTheScene(bitmap)
+                        val response = context.describeTheScene(bitmap!!)
                         if (response != null) {
                             context.performTextToSpeech(response)
                         }
-                        context.deleteFileIfExists(context, "capturedimage.jpg")
                         bitmap.recycle()
                     }
                 }
@@ -1550,7 +1713,7 @@ fun MyApp() {
                                 var response = img?.let { context.howMuchMoney(it) }
                                 delay(3000)
                                 if (response != null) {
-                                    context.performTextToSpeech(response)
+                                    context.performTextToSpeech(response!!)
                                 }
                             }
                         }
@@ -1573,20 +1736,17 @@ fun MyApp() {
                         } else {
                             Log.e("Error","Error")
                         }
-                        delay(2000)
                         val bitmap = BitmapFactory.decodeFile(a)
-                        val response = context.describeTheScene(bitmap)
+                        val response = context.howMuchMoney(bitmap!!)
                         if (response != null) {
                             context.performTextToSpeech(response)
                         }
-                        context.deleteFileIfExists(context, "capturedimage.jpg")
                         bitmap.recycle()
                     }
                 }
                 else if (context.recognizedText?.lowercase() in listOf("capture image","capture photo","take photo","take image","photo take","image take") ) {
                     context.performTextToSpeech("What is the question you want to ask?")
                     context.performSpeechRecognition()
-                    delay(3000)
                     println(context.recognizedText)
                     val prompt = context.recognizedText
                     println(prompt)
@@ -1597,7 +1757,6 @@ fun MyApp() {
                             println(img)
                             val cc = CoroutineScope(Dispatchers.Main)
                             cc.launch {
-                                delay(2000)
                                var response = prompt?.let { img?.let { it1 ->
                                    context.captureImage(
                                        it1, it)
@@ -1605,7 +1764,7 @@ fun MyApp() {
                                }
                                 delay(3000)
                                 if (response != null) {
-                                    context.performTextToSpeech(response)
+                                    context.performTextToSpeech(response!!)
                                 }
                             }
                         }
@@ -1615,6 +1774,7 @@ fun MyApp() {
                     Log.d("hello", "MyApp: hellooo $newfile")
                     delay(1000)
                     if (newfile != null) {
+
                         context.captureAndSaveImage(context,context, onImageCaptured = { filePath ->
                             println("Sucessful $filePath" )
                             a = filePath
@@ -1623,19 +1783,22 @@ fun MyApp() {
                                 println("error")
                             }, file = newfile
                         )
+
+
                     }
                     else {
                         Log.e("Error","Error")
                     }
-                    delay(2000)
                     val bitmap = BitmapFactory.decodeFile(a)
                     println(bitmap)
                     println(prompt)
-                    val response = context.recognizedText?.let { context.captureImage(bitmap, it) }
-                    if (response != null) {
-                        context.performTextToSpeech(response)
+                    var response = "Error pa thambi"
+                    if (bitmap!=null) {
+                         response =
+                             context.recognizedText?.let { context.captureImage(bitmap, it) }.toString()
                     }
-                    context.deleteFileIfExists(context,"capturedimage.jpg")
+
+                    context.performTextToSpeech(response)
                     bitmap.recycle()
                 }
                 else if(context.recognizedText?.lowercase()in listOf("remember this face","remember face","face remember","face this remember","memory this face","memory face","face memory","face this memory")) {
@@ -1647,7 +1810,6 @@ fun MyApp() {
                                 if (img?.let { context.detectFace(it) } == true) {
                                     context.performTextToSpeech("Face detected. What is the name of this person?.")
                                     context.performSpeechRecognition()
-                                    delay(5000)
                                     var name = context.recognizedText
                                     println("name is $name")
                                     var imagePaths = mutableListOf<String>()
@@ -1656,22 +1818,27 @@ fun MyApp() {
                                             bytes
                                             var bitmap = context.convertByteArrayToBitmap(bytes)
                                             if (bitmap != null) {
-                                                var imgpath = context.saveBitmapToExternalStorage(
-                                                    bitmap,
-                                                    "$name" + "$i"
-                                                )
-                                                if (imgpath != null) {
-                                                    imagePaths.add(imgpath)
+                                                val cc = CoroutineScope(Dispatchers.Main)
+
+
+                                                cc.launch {
+                                                   var imgpath = context.saveBitmapToExternalStorage(
+                                                        bitmap,
+                                                        "$name" + "$i"
+                                                    )
+                                                    if (imgpath != null) {
+                                                        imagePaths.add(imgpath)
+                                                    }
                                                 }
+
                                             }
                                         }
+                                        delay(5000)
                                     }
                                         context.performTextToSpeech("Images captured Succesfully. You can lower your camera.What note do you want to add to this person?.")
                                         context.performSpeechRecognition()
-                                        delay(5000)
                                         var test = ""
                                         test = context.uploadImages(
-                                            context,
                                             "['rememberface','$name','${context.recognizedText}']",
                                             imagePaths
                                         )
@@ -1702,12 +1869,10 @@ fun MyApp() {
                         } else {
                             Log.e("Error","Error")
                         }
-                        delay(3000)
                         var imagespaths = mutableListOf<String>()
                         if (context.detectFace(a)) {
                             context.performTextToSpeech("Face detected. What is the name of this person?.")
                             context.performSpeechRecognition()
-                            delay(5000)
                             var name = context.recognizedText
                             println("name is $name")
                             for (i in 1..3) {
@@ -1727,16 +1892,14 @@ fun MyApp() {
                                 } else {
                                     Log.e("Error","Error")
                                 }
-                                delay(3000)
+
                                 imagespaths.add(a)
                                 println("Image path $i : $a")
                             }
                             context.performTextToSpeech("Images captured Succesfully. You can lower your camera.What note do you want to add to this person?.")
                             context.performSpeechRecognition()
-                            delay(5000)
                             var test = ""
                             test = context.uploadImages(
-                                context,
                                 "['rememberface','$name','${context.recognizedText}']",
                                 imagespaths
                             )
@@ -1746,7 +1909,6 @@ fun MyApp() {
                             context.performTextToSpeech("Face Not Detected")
                         }
                         delay(2000)
-                        context.deleteFileIfExists(context, "capturedimage.jpg")
                     }
                 }
                 else if(context.recognizedText?.lowercase() in listOf("check for faces","check faces","faces check","check for face","check face","face check","look for face","look for faces","look faces")) {
@@ -1757,7 +1919,7 @@ fun MyApp() {
                             cc.launch {
                                 if (bitmap?.let { context.detectFace(it) } == true) {
                                     context.performTextToSpeech("Face detected. Processing. Kindly wait. This may take a while")
-                                    var img = bitmap?.let {
+                                    var img = bitmap.let {
                                         var path = context.saveBitmapToExternalStorage(
                                             it,
                                             "capturedimage.jpg"
@@ -1777,8 +1939,7 @@ fun MyApp() {
                                         delay(2000)
                                         if (resu.lowercase() == "failure") {
                                             context.performTextToSpeech("Sorry unable to access the server properly")
-                                        }
-                                        else {
+                                        } else {
                                             context.performTextToSpeech(resu)
                                         }
                                     }
@@ -1791,7 +1952,7 @@ fun MyApp() {
                     }
                     else {
                         val newfile = context.createFile(context, "capturedimage")
-                        delay(1000)
+
                         var a = ""
                         if (newfile != null) {
                             context.captureAndSaveImage(
@@ -1806,7 +1967,7 @@ fun MyApp() {
                         } else {
                             Log.e("Error","Error")
                         }
-                        delay(3000)
+
                         var imagespaths = mutableListOf<String>()
                         imagespaths.add(a)
                         if (context.detectFace(a)) {
@@ -1830,13 +1991,11 @@ fun MyApp() {
                         } else {
                             context.performTextToSpeech("No face has been detected in the image")
                         }
-                        delay(10000)
                     }
                 }
-                else if(context.recognizedText?.lowercase()=="set an alarm") {
+                else if(context.recognizedText?.lowercase() in listOf("set an alarm","alarm","reminder","set a reminder")) {
                     context.performTextToSpeech("Please say the time in the format of hours minutes AM or PM.")
                     context.performSpeechRecognition()
-                    delay(4000)
                     context.processSpokenTime(context.recognizedText!!)
                 }
                 else if(context.recognizedText?.lowercase() in listOf("navigation","route","path")) {
@@ -1850,7 +2009,6 @@ fun MyApp() {
                     var selectedMode = 0
                     context.performTextToSpeech("Do you want to navigate from your current location?. Say okay Or no.")
                     context.performSpeechRecognition()
-                    delay(5000)
                     if (context.recognizedText?.lowercase()=="okay" || context.recognizedText?.lowercase()=="ok") {
                         context.getCurrentLocation(fusedLocationClient) { location ->
                             currentLocation = location
@@ -1861,7 +2019,6 @@ fun MyApp() {
                     else if (context.recognizedText?.lowercase()=="no") {
                         context.performTextToSpeech("Tell me the Starting point from where you want to start.")
                         context.performSpeechRecognition()
-                        delay(3000)
                         origin = context.recognizedText!!
                     }
                     else {
@@ -1874,11 +2031,9 @@ fun MyApp() {
                     }
                     context.performTextToSpeech("What is your destination?.")
                     context.performSpeechRecognition()
-                    delay(4000)
                     destination = context.recognizedText!!
                     context.performTextToSpeech("What is the mode of transportation, you want to take?. Say Public Transport. or Four Wheeler. or Two wheeler. or walk")
                     context.performSpeechRecognition()
-                    delay(5000)
                     if (context.recognizedText?.lowercase()=="public transport") {
                         selectedMode = 3
                     }
@@ -1937,6 +2092,8 @@ fun MyApp() {
                     context.performTextToSpeech(text1)
                 }
                 else if(context.recognizedText?.lowercase() in listOf("what can you do","what you can do","what you do","what do","do what","do what you")) {
+
+
                     context.performTextToSpeech("There are various features that i can provide you to make your day better.")
                     context.performTextToSpeech("If you need to know what is in front of you. Just tell me.   Describe the scene.    I'll provide you with the description of the scene in front of you.")
                     context.performTextToSpeech("If you need to capture a face and ask me to remember just tell me. Remember this face.")
@@ -1955,12 +2112,10 @@ fun MyApp() {
                     context.performTextToSpeech("If you need to get weather report.say. get weather report.")
                     context.performTextToSpeech("If you need to remember some task to do. say. to do list")
                     context.performTextToSpeech("If you need to read all unread sms messages. say. read all unread messages.")
-                    context.performTextToSpeech("If you need to list out all features, just say. what can you do.")
                 }
-                else if (context.recognizedText?.lowercase() in listOf("change language","language change","language")) {
+                else if (context.recognizedText?.lowercase() in listOf("change language","language change","language","alternate language")) {
                     context.performTextToSpeech("What is the name of the language you want to change?")
                     context.performSpeechRecognition()
-                    delay(6000)
                     if (context.recognizedText?.lowercase() in context.languageNames) {
                         context.overwriteFile(context,"LanguageName.txt", context.recognizedText!!.lowercase())
                         context.LanguageName = context.recognizedText?.lowercase()!!
@@ -1981,7 +2136,6 @@ fun MyApp() {
                 else if (context.recognizedText?.lowercase() in listOf("to do list","do to list","to do","do to")) {
                     context.performTextToSpeech("Say a command. To list out all commands say list command")
                     context.performSpeechRecognition()
-                    delay(4000)
                     if (context.recognizedText?.lowercase()=="list command") {
                         context.performTextToSpeech("To read all tasks. Say. Read all task.")
                         context.performTextToSpeech("To read a specific task using index.Say. Read task,task number")
@@ -1990,11 +2144,11 @@ fun MyApp() {
                         context.performTextToSpeech("To delete task using task name. say. delete task, task name")
                     }
                     else {
+
                         context.handleSpeechInput(context.recognizedText!!)
                         if (context.listeningMode==MainActivity.ListeningMode.ADD_TASK)  {
                             context.performTextToSpeech("Tell me the task you want to add.")
                             context.performSpeechRecognition()
-                            delay(3000)
                             context.handleSpeechInput(context.recognizedText!!)
                         }
                     }
@@ -2002,15 +2156,12 @@ fun MyApp() {
                 else if (context.recognizedText?.lowercase() in listOf("add a contact","add contact","contact add","add this contact")) {
                     context.performTextToSpeech("What is the name of the contact?")
                     context.performSpeechRecognition()
-                    delay(4000)
                     var name = context.recognizedText
                     context.performTextToSpeech("Say the digits of the phone number continuously.")
                     context.performSpeechRecognition()
-                    delay(10000)
                     var phno = context.recognizedText
                     context.performTextToSpeech("This is the phone number you said. $phno. This is the name you said. $name. do you want to save this contact?. Say okay or no.")
                     context.performSpeechRecognition()
-                    delay(4000)
                     if (context.recognizedText?.lowercase()=="okay") {
                         if (phno != null) {
                             if (name != null) {
@@ -2024,17 +2175,16 @@ fun MyApp() {
                     }
                 }
                 else if (context.recognizedText?.lowercase() in listOf("get weather report","get weather information","get weather data","get data weather","weather","get information weather")) {
-                    context.getCurrentLocation(fusedLocationClient) { location ->
-                        var Location = location
-                        context.fetchAndSpeakWeather(Location)
-                    }
+                    context.performTextToSpeech("Tell me the city in which you want to check your location.")
+                    context.performSpeechRecognition()
+                    context.fetchAndSpeakWeather(context.recognizedText!!)
+
                 }
                 else if (context.recognizedText?.lowercase()=="youtube") {
                     val repository = YouTubeRepository()
                     val viewModel = YouTubeViewModel(repository)
                     context.performTextToSpeech("Say What You want to play")
                     context.performSpeechRecognition()
-                    delay(5000)
                     val query = context.recognizedText
                     val apiKey = context.youtubedfapikey
                   var youtubeItems = query?.let { viewModel.searchVideos(it, apiKey) }
@@ -2050,13 +2200,12 @@ fun MyApp() {
                         }
                         context.performTextToSpeech("Tell me the serial number of the desired video.")
                         context.performSpeechRecognition()
-                        delay(3000)
                         var indexx = 1
-                        if (context.recognizedText in listOf("1","2","3","4","5","6","7","8","9","10")) {
+                        if (context.recognizedText in listOf("1","2","3","4","5")) {
                             indexx = context.recognizedText!!.toInt()
                         }
                         else {
-                            context.performTextToSpeech("No number detected in your speech. So playing the first video.")
+                            context.performTextToSpeech("No correct number detected in your speech. So playing the first video.")
                         }
                       context.performTextToSpeech("This action is going to take you to the youtube app. You will have to comeback to Echo Sight app to continue using other features.")
                         context.playYouTubeVideo(context,youtubeItems[indexx].second)
@@ -2069,10 +2218,13 @@ fun MyApp() {
                     context.performTextToSpeech("Sorry unable to recognise what you said")
                 }
             }
-                      },
+                      }, colors = ButtonDefaults.buttonColors(
+                containerColor = Color.Blue,
+                contentColor = Color.White
+            ),
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(13.dp) // Add padding to keep the button away from the edge
+                .padding(13.dp)
         ) {
             Text(text = "Ask Me !!")
         }
@@ -2098,7 +2250,7 @@ class YouTubeRepository {
     private val api = RetrofitInstance2.api
     suspend fun searchVideos(query: String, apiKey: String): YouTubeResponse? {
         return try {
-            val response = api.searchVideos("snippet", query, "video", 10, apiKey)
+            val response = api.searchVideos("snippet", query, "video", 5, apiKey)
             if (response.isSuccessful) {
                 response.body()
             } else {

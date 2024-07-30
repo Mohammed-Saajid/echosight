@@ -37,7 +37,7 @@
  
  Readability: With Gemini integrated Echosight, All the users can read books, notice signs, and literally anything !.
 
-### We have developed smart glasses that pair with the EchoSight app. These glasses feature a built-in camera, allowing users to capture images without lifting their phones. By simply pointing their head towards an object, users can effortlessly utilize camera-dependent features, enhancing their comfort and convenience.
+### We have developed prototype of smart glasses that pair with the EchoSight app. These glasses feature a built-in camera, allowing users to capture images without lifting their phones. By simply pointing their head towards an object, users can effortlessly utilize camera-dependent features, enhancing their comfort and convenience.
 
 
 ## List of all features:
