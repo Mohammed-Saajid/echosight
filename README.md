@@ -3,6 +3,11 @@
 ## Introduction:
  
  EchoSight is a cutting-edge Android application meticulously crafted to assist visually challenged individuals by providing real-time audio descriptions of their surroundings and other valuable features. This application is integrated with Google's Gemini model, which acts as the cornerstone of our project. As the saying goes, "A picture is worth a thousand words," but EchoSight proves that hearing those thousand words can be just as powerful.
+
+[![Explanation Video](https://img.youtube.com/vi/Ode20-0l49w/maxresdefault.jpg)](https://youtu.be/Ode20-0l49w?si=bwPDfEbCfmh9gSDj)
+
+
+
  
 ## Aim:
 
